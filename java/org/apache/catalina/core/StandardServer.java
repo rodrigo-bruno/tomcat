@@ -149,6 +149,11 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      */
     private String shutdown = "SHUTDOWN";
 
+    /**
+     * The restart command string we are looking for.
+     */
+    private String restart = "RESTART";
+
 
     /**
      * The string manager for this package.
@@ -556,11 +561,12 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      * connections is daemon threads.
      */
     @Override
-    public void await() {
+    public boolean await() {
+        boolean shouldrestart = false;
         // Negative values - don't wait on port - tomcat is embedded or we just don't like ports
         if (getPortWithOffset() == -2) {
             // undocumented yet - for embedding apps that are around, alive.
-            return;
+            return shouldrestart;
         }
         if (getPortWithOffset() == -1) {
             try {
@@ -575,7 +581,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
             } finally {
                 awaitThread = null;
             }
-            return;
+            return shouldrestart;
         }
 
         // Set up a server socket to wait on
@@ -586,7 +592,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
             log.error(sm.getString("standardServer.awaitSocket.fail", address,
                     String.valueOf(getPortWithOffset()), String.valueOf(getPort()),
                     String.valueOf(getPortOffset())), e);
-            return;
+            return shouldrestart;
         }
 
         try {
@@ -661,9 +667,12 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
                 }
 
                 // Match against our command string
-                boolean match = command.toString().equals(shutdown);
-                if (match) {
+                if (command.toString().equals(shutdown)) {
                     log.info(sm.getString("standardServer.shutdownViaPort"));
+                    break;
+                } else if (command.toString().equals(restart)) {
+                    log.info(sm.getString("standardServer.restartViaPort"));
+                    shouldrestart = true;
                     break;
                 } else
                     log.warn(sm.getString("standardServer.invalidShutdownCommand", command.toString()));
@@ -682,6 +691,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
                 }
             }
         }
+        return shouldrestart;
     }
 
 

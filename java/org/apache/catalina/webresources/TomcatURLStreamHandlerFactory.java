@@ -127,7 +127,12 @@ public class TomcatURLStreamHandlerFactory implements URLStreamHandlerFactory {
         // factory
         this.registered = register;
         if (register) {
-            URL.setURLStreamHandlerFactory(this);
+            try {
+                URL.setURLStreamHandlerFactory(this);
+            } catch (Error e) {
+                ; // This can happen when we restart tomcat
+            }
+
         }
     }
 

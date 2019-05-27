@@ -233,7 +233,7 @@ public interface Server extends Lifecycle {
     /**
      * Wait until a proper shutdown command is received, then return.
      */
-    public void await();
+    public boolean await();
 
 
     /**

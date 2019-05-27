@@ -143,7 +143,7 @@ PRGDIR=`dirname "$PRG"`
 
 # Ensure that any user defined CLASSPATH variables are not used on startup,
 # but allow them to be specified in setenv.sh, in rare case when it is needed.
-CLASSPATH=
+#CLASSPATH= # TODO - rbruno - think of a better solution!
 
 if [ -r "$CATALINA_BASE/bin/setenv.sh" ]; then
   . "$CATALINA_BASE/bin/setenv.sh"
@@ -399,6 +399,18 @@ elif [ "$1" = "run" ]; then
       -Djava.io.tmpdir="\"$CATALINA_TMPDIR\"" \
       org.apache.catalina.startup.Bootstrap "$@" start
   fi
+
+elif [ "$1" = "restart" ]; then
+
+  shift
+
+  eval "\"$_RUNJAVA\"" $JAVA_OPTS \
+    -D$ENDORSED_PROP="\"$JAVA_ENDORSED_DIRS\"" \
+    -classpath "\"$CLASSPATH\"" \
+    -Dcatalina.base="\"$CATALINA_BASE\"" \
+    -Dcatalina.home="\"$CATALINA_HOME\"" \
+    -Djava.io.tmpdir="\"$CATALINA_TMPDIR\"" \
+    org.apache.catalina.startup.Bootstrap "$@" restart
 
 elif [ "$1" = "start" ] ; then
 

@@ -34,6 +34,8 @@ import org.apache.catalina.startup.ClassLoaderFactory.RepositoryType;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
+import ch.ethz.systems.ert.ElasticRuntime;
+
 
 /**
  * Bootstrap loader for Catalina.  This application constructs a class loader
@@ -260,6 +262,7 @@ public final class Bootstrap {
         if (log.isDebugEnabled())
             log.debug("Loading startup class");
         Class<?> startupClass = catalinaLoader.loadClass("org.apache.catalina.startup.Catalina");
+
         Object startupInstance = startupClass.getConstructor().newInstance();
 
         // Set the shared extensions class loader
@@ -274,6 +277,7 @@ public final class Bootstrap {
             startupInstance.getClass().getMethod(methodName, paramTypes);
         method.invoke(startupInstance, paramValues);
 
+        log.info("ETHZ new cataline " + startupInstance);
         catalinaDaemon = startupInstance;
     }
 
@@ -335,13 +339,14 @@ public final class Bootstrap {
      * Start the Catalina daemon.
      * @throws Exception Fatal start error
      */
-    public void start() throws Exception {
+    public boolean start(String[] arguments) throws Exception {
+        log.info("ETHZ starting bootstrap! " + catalinaDaemon);
         if (catalinaDaemon == null) {
             init();
         }
 
         Method method = catalinaDaemon.getClass().getMethod("start", (Class [])null);
-        method.invoke(catalinaDaemon, (Object [])null);
+        return (Boolean) method.invoke(catalinaDaemon, (Object [])null);
     }
 
 
@@ -350,8 +355,16 @@ public final class Bootstrap {
      * @throws Exception Fatal stop error
      */
     public void stop() throws Exception {
+        log.info("ETHZ stopping bootstrap!");
         Method method = catalinaDaemon.getClass().getMethod("stop", (Class []) null);
         method.invoke(catalinaDaemon, (Object []) null);
+    }
+
+    public void restartServer() throws Exception {
+        log.info("ETHZ restarting bootstrap!");
+        Method method =
+                catalinaDaemon.getClass().getMethod("restartServer", (Class []) null);
+            method.invoke(catalinaDaemon, (Object []) null);
     }
 
 
@@ -360,7 +373,7 @@ public final class Bootstrap {
      * @throws Exception Fatal stop error
      */
     public void stopServer() throws Exception {
-
+        log.info("ETHZ stopping bootstrap!");
         Method method =
             catalinaDaemon.getClass().getMethod("stopServer", (Class []) null);
         method.invoke(catalinaDaemon, (Object []) null);
@@ -427,15 +440,7 @@ public final class Bootstrap {
 
     }
 
-
-    /**
-     * Main method and entry point when starting Tomcat via the provided
-     * scripts.
-     *
-     * @param args Command line arguments to be processed
-     */
-    public static void main(String args[]) {
-
+    public static void setupDaemon() {
         synchronized (daemonLock) {
             if (daemon == null) {
                 // Don't set daemon until init() has completed
@@ -455,8 +460,23 @@ public final class Bootstrap {
                 Thread.currentThread().setContextClassLoader(daemon.catalinaLoader);
             }
         }
+    }
+
+
+    /**
+     * Main method and entry point when starting Tomcat via the provided
+     * scripts.
+     *
+     * @param args Command line arguments to be processed
+     */
+    public static void main(String args[]) {
+
+        setupDaemon();
+
+        ElasticRuntime.registerMainInvocation(Bootstrap.class, args);
 
         try {
+            // TODO - introduce a new command? restart?
             String command = "start";
             if (args.length > 0) {
                 command = args[args.length - 1];
@@ -465,14 +485,24 @@ public final class Bootstrap {
             if (command.equals("startd")) {
                 args[args.length - 1] = "start";
                 daemon.load(args);
-                daemon.start();
+                daemon.start(args);
             } else if (command.equals("stopd")) {
                 args[args.length - 1] = "stop";
                 daemon.stop();
             } else if (command.equals("start")) {
-                daemon.setAwait(true);
-                daemon.load(args);
-                daemon.start();
+                while (true) {
+                    daemon.setAwait(true);
+                    daemon.load(args);
+                    if (!daemon.start(args)) {
+                        break;
+                    } else {
+                        Thread.sleep(1000);
+                        log.info("ETHZ restarting bootstrap!");
+                        daemon = null;
+                        setupDaemon();
+                    }
+                }
+
                 if (null == daemon.getServer()) {
                     System.exit(1);
                 }
@@ -484,6 +514,8 @@ public final class Bootstrap {
                     System.exit(1);
                 }
                 System.exit(0);
+            }else if (command.equals("restart")) {
+                daemon.restartServer();
             } else {
                 log.warn("Bootstrap: command \"" + command + "\" does not exist.");
             }

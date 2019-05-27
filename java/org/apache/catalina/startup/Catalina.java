@@ -470,6 +470,62 @@ public class Catalina {
 
     }
 
+    public void restartServer() {
+
+        Server s = getServer();
+        if (s == null) {
+            // Create and execute our Digester
+            Digester digester = createStopDigester();
+            File file = configFile();
+            try (FileInputStream fis = new FileInputStream(file)) {
+                InputSource is =
+                    new InputSource(file.toURI().toURL().toString());
+                is.setByteStream(fis);
+                digester.push(this);
+                digester.parse(is);
+            } catch (Exception e) {
+                log.error(sm.getString("catalina.stopError"), e);
+                System.exit(1);
+            }
+        } else {
+            // Server object already present. Must be running as a service
+            try {
+                // TODO - remove these two and replace by restart
+                s.stop();
+                s.destroy();
+                log.error("ETHZ attempting to killl local server...");
+            } catch (LifecycleException e) {
+                log.error(sm.getString("catalina.stopError"), e);
+            }
+            return;
+        }
+
+        // Stop the existing server
+        s = getServer();
+        if (s.getPortWithOffset() > 0) {
+            try (Socket socket = new Socket(s.getAddress(), s.getPortWithOffset());
+                    OutputStream stream = socket.getOutputStream()) {
+                //String shutdown = s.getShutdown();
+                String shutdown = "RESTART";
+                for (int i = 0; i < shutdown.length(); i++) {
+                    stream.write(shutdown.charAt(i));
+                }
+                stream.flush();
+            } catch (ConnectException ce) {
+                log.error(sm.getString("catalina.stopServer.connectException", s.getAddress(),
+                        String.valueOf(s.getPortWithOffset()), String.valueOf(s.getPort()),
+                        String.valueOf(s.getPortOffset())));
+                log.error(sm.getString("catalina.stopError"), ce);
+                System.exit(1);
+            } catch (IOException e) {
+                log.error(sm.getString("catalina.stopError"), e);
+                System.exit(1);
+            }
+        } else {
+            log.error(sm.getString("catalina.stopServer"));
+            System.exit(1);
+        }
+    }
 
     public void stopServer() {
         stopServer(null);
@@ -615,7 +671,9 @@ public class Catalina {
     /**
      * Start a new server instance.
      */
-    public void start() {
+    public boolean start() {
+        boolean shouldrestart = false;
+        log.info("ETHZ starting catalina! " + this.hashCode());
 
         if (getServer() == null) {
             load();
@@ -623,7 +681,7 @@ public class Catalina {
 
         if (getServer() == null) {
             log.fatal(sm.getString("catalina.noServer"));
-            return;
+            return shouldrestart;
         }
 
         long t1 = System.nanoTime();
@@ -638,7 +696,7 @@ public class Catalina {
             } catch (LifecycleException e1) {
                 log.debug("destroy() failed for failed Server ", e1);
             }
-            return;
+            return shouldrestart;
         }
 
         long t2 = System.nanoTime();
@@ -664,9 +722,11 @@ public class Catalina {
         }
 
         if (await) {
-            await();
+            shouldrestart = await();
             stop();
         }
+
+        return shouldrestart;
     }
 
 
@@ -674,6 +734,7 @@ public class Catalina {
      * Stop an existing server instance.
      */
     public void stop() {
+        log.info("ETHZ stoping catalina!");
 
         try {
             // Remove the ShutdownHook first so that server.stop()
@@ -709,16 +770,15 @@ public class Catalina {
         } catch (LifecycleException e) {
             log.error(sm.getString("catalina.stopError"), e);
         }
-
     }
 
 
     /**
      * Await and shutdown.
      */
-    public void await() {
+    public boolean await() {
 
-        getServer().await();
+        return getServer().await();
 
     }
 
